@@ -8,4 +8,4 @@ test-ledger
 .surfpool
 runbooks
 txtx.yml
-deps/**
+/deps/
