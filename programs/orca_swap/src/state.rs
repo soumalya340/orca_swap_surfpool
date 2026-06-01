@@ -6,7 +6,7 @@ pub struct Vault {
     pub btc_amount: u64,
     pub eth_amount: u64,
     pub sol_amount: u64,
-    pub accepted_mint_key: Pubkey,
+    pub usdc_amount: u64,
     pub authority_bump: u8,
 }
 
@@ -22,4 +22,6 @@ pub enum ErrorCode {
     IncorrectOwner,
     #[msg("Invalid token mint.")]
     InvalidMint,
+    #[msg("WSOL swap amount exceeds vault WSOL balance.")]
+    InsufficientWsolBalance,
 }
