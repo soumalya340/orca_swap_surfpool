@@ -47,11 +47,11 @@ pub mod orca_swap {
 
     pub fn swap_wsol_to_usdc(
         ctx: Context<SwapWsolToUsdc>,
-        wsol_amount_in: u64,
+        sol_amount_in: u64,
         min_usdc_out: u64,
         a_to_b: bool,
     ) -> Result<()> {
-        handle_swap_wsol_to_usdc(ctx, wsol_amount_in, min_usdc_out, a_to_b)
+        handle_swap_wsol_to_usdc(ctx, sol_amount_in, min_usdc_out, a_to_b)
     }
 
     pub fn distribute_all(ctx: Context<DistributeAll>) -> Result<()> {

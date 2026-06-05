@@ -4,8 +4,7 @@
     "lint:fix": "prettier */*.js \"*/**/*{.js,.ts}\" -w",
     "lint": "prettier */*.js \"*/**/*{.js,.ts}\" --check",
     "test:litesvm": "yarn ts-mocha -p ./tsconfig.json -t 1000000 tests/litesvm/orca_swap.test.ts",
-    "test": "anchor test --skip-local-validator",
-    "start:validator": "solana-test-validator --bpf-program whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc tests/programs/orca-whirlpool.so --clone 2LecshUwdy9xi7meFgHtFJQNSKk4KdTrcpvaB56dP2NQ --clone B5EwJVDuAauzUEEdwvbuXzbFFgEYnUqqS37TUM1c4PQA --clone HktfL7iwGKT5QHjywQkcDnZXScoh811k7akrMZJkCcEF --clone Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE --url mainnet-beta --reset"
+    "test:orca": "ANCHOR_TEST_FILE=tests/orca_swap.test.ts anchor test --skip-local-validator"
   },
   "type": "module",
   "dependencies": {
