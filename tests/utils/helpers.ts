@@ -1,6 +1,8 @@
 import * as anchor from "@coral-xyz/anchor";
 import {
   AccountInfo,
+  AddressLookupTableAccount,
+  AddressLookupTableProgram,
   Connection,
   PublicKey,
   Transaction,
@@ -10,6 +12,7 @@ import {
   getAssociatedTokenAddressSync,
   TOKEN_PROGRAM_ID as SPL_TOKEN_PROGRAM_ID,
   ASSOCIATED_TOKEN_PROGRAM_ID,
+  AccountLayout,
 } from "@solana/spl-token";
 
 export const WHIRLPOOL_PROGRAM_ID = new PublicKey(
@@ -146,6 +149,19 @@ export async function surfnetWipeAccount(
   ]);
 }
 
+export async function logCu(
+  connection: Connection,
+  sig: string,
+  label: string,
+): Promise<void> {
+  const tx = await connection.getTransaction(sig, {
+    commitment: "confirmed",
+    maxSupportedTransactionVersion: 0,
+  });
+  const cu = tx?.meta?.computeUnitsConsumed;
+  console.log(`  [CU] ${label}: ${cu !== undefined ? cu.toLocaleString() : "n/a"} compute units`);
+}
+
 export async function program_status(
   connection: Connection,
   program_id: PublicKey,
@@ -160,4 +176,82 @@ export async function program_status(
     );
   }
   return programAccount;
+}
+
+export async function createAndExtendLut(
+  provider: anchor.AnchorProvider,
+  addresses: PublicKey[],
+): Promise<AddressLookupTableAccount> {
+  const connection = provider.connection;
+  const signer = provider.wallet.publicKey;
+
+  const slot = await connection.getSlot("finalized");
+  const [createLutIx, lutAddress] = AddressLookupTableProgram.createLookupTable(
+    { authority: signer, payer: signer, recentSlot: slot },
+  );
+
+  await provider.sendAndConfirm(new Transaction().add(createLutIx));
+  console.log(`  Address Lookup Table account created at ${lutAddress.toBase58()}`);
+
+  const batchSize = 20;
+  for (let i = 0; i < addresses.length; i += batchSize) {
+    const batch = addresses.slice(i, i + batchSize);
+    const extendLutIx = AddressLookupTableProgram.extendLookupTable({
+      payer: signer,
+      authority: signer,
+      lookupTable: lutAddress,
+      addresses: batch,
+    });
+    await provider.sendAndConfirm(new Transaction().add(extendLutIx));
+    console.log(`  Extended LUT with batch ${i / batchSize + 1} (${batch.length} addresses)`);
+  }
+  console.log(`  ✅ LUT created & extended at ${lutAddress.toBase58()}`);
+
+  // Wait for the lookup table to become active (usually 1 slot)
+  await new Promise((resolve) => setTimeout(resolve, 1500));
+
+  const lookupTableAccount = (await connection.getAddressLookupTable(lutAddress)).value;
+  if (!lookupTableAccount) {
+    throw new Error("Failed to retrieve Address Lookup Table account");
+  }
+  return lookupTableAccount;
+}
+
+export async function surfnetSetTokenBalance(
+  connection: Connection,
+  ata: PublicKey,
+  mint: PublicKey,
+  owner: PublicKey,
+  amount: bigint | number,
+): Promise<void> {
+  const accountInfo = await connection.getAccountInfo(ata);
+  if (!accountInfo) {
+    throw new Error(`Account ${ata.toBase58()} does not exist`);
+  }
+  const data = Buffer.alloc(165);
+  AccountLayout.encode(
+    {
+      mint,
+      owner,
+      amount: BigInt(amount),
+      delegateOption: 0,
+      delegate: PublicKey.default,
+      state: 1, // Initialized
+      isNativeOption: 0,
+      isNative: BigInt(0),
+      delegatedAmount: BigInt(0),
+      closeAuthorityOption: 0,
+      closeAuthority: PublicKey.default,
+    },
+    data
+  );
+  await surfnetRpc(connection, "surfnet_setAccount", [
+    ata.toBase58(),
+    {
+      lamports: accountInfo.lamports,
+      data: data.toString("hex"),
+      owner: accountInfo.owner.toBase58(),
+      executable: accountInfo.executable,
+    },
+  ]);
 }

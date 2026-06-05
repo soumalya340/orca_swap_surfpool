@@ -24,4 +24,6 @@ pub enum ErrorCode {
     InvalidMint,
     #[msg("WSOL swap amount exceeds vault WSOL balance.")]
     InsufficientWsolBalance,
+    #[msg("Required vault token account has not been initialized (must be pre-created off-chain).")]
+    AccountNotInitialized,
 }

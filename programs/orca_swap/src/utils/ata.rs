@@ -38,3 +38,29 @@ pub fn create_ata_idempotent<'info>(
     }
     Ok(())
 }
+
+/// Validates that the given ATA already exists on-chain, is owned by `authority`,
+/// and holds the expected `mint`. This is used for ATAs that are required to be
+/// pre-created off-chain (to save CU on creation inside the instruction).
+///
+/// Returns `AccountNotInitialized` if the account is missing or has zero lamports.
+pub fn validate_ata_exists<'info>(
+    ata: AccountInfo<'info>,
+    authority: AccountInfo<'info>,
+    mint: AccountInfo<'info>,
+) -> Result<()> {
+    require!(
+        !ata.data_is_empty() && ata.lamports() > 0,
+        ErrorCode::AccountNotInitialized
+    );
+
+    let data = ata.try_borrow_data()?;
+    let token_account = TokenAccount::try_deserialize(&mut data.as_ref())?;
+    require_keys_eq!(
+        token_account.owner,
+        authority.key(),
+        ErrorCode::IncorrectOwner
+    );
+    require_keys_eq!(token_account.mint, mint.key(), ErrorCode::InvalidMint);
+    Ok(())
+}
