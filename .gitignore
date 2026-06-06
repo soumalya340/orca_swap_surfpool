@@ -10,3 +10,5 @@ runbooks
 txtx.yml
 /deps/
 docs/
+.agents
+skills-lock.json

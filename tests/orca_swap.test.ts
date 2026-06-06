@@ -523,8 +523,9 @@ describe("orca_swap", () => {
 
     const signerUsdcAta = await ensureAta(provider, signer, USDC_MINT);
 
-    // 1. JIT-fund signer's USDC ATA with 500 USDC
-    const USDC_AMOUNT_IN = 500_000_000; // 500 USDC (6 decimals)
+    // 1. JIT-fund signer's USDC ATA with 100 USDC (50 USDC per asset leg)
+    const USDC_AMOUNT_IN = 100_000_000; // 100 USDC (6 decimals)
+    const USDC_PER_LEG = 50; // human-readable, for price back-calculation
     await surfnetSetTokenBalance(
       connection,
       signerUsdcAta,
@@ -532,7 +533,7 @@ describe("orca_swap", () => {
       signer,
       USDC_AMOUNT_IN,
     );
-    console.log("  ✅ Signer USDC ATA funded with 500 USDC via Surfnet RPC");
+    console.log("  ✅ Signer USDC ATA funded with 100 USDC via Surfnet RPC");
 
     // 2. Fetch pool info & tick arrays
     const usdcPoolInfo = await program_status(
@@ -643,9 +644,15 @@ describe("orca_swap", () => {
     ]);
     lookupTableAddress = lookupTableAccount.key;
 
-    // Define amounts: swap 500 USDC to SOL, then split 0.5 SOL to WBTC and 0.5 SOL to WETH
-    const WBTC_SOL_IN = 500_000_000; // 0.5 SOL
-    const WETH_SOL_IN = 500_000_000; // 0.5 SOL
+    // Capture WBTC and WETH balances before the swap
+    const wbtcBalanceBefore = await connection.getTokenAccountBalance(vaultWbtcAta).catch(() => ({ value: { amount: "0" } }));
+    const wethBalanceBefore = await connection.getTokenAccountBalance(vaultWethAta).catch(() => ({ value: { amount: "0" } }));
+
+    // 100 USDC → wSOL, then split wSOL 50/50 into WBTC and WETH.
+    // The wSOL split amounts are approximate — we use half the expected wSOL output.
+    // Set each leg to half the total wSOL (50 USDC worth each); 0 = no min-out guard.
+    const WBTC_SOL_IN = 500_000_000; // ~0.50 SOL (50 USDC worth at ~100 USDC/SOL)
+    const WETH_SOL_IN = 500_000_000; // ~0.50 SOL
 
     const swapInstruction = await program.methods
       .swapUsdcToAssets(
@@ -729,6 +736,33 @@ describe("orca_swap", () => {
       weth: vaultWethAta,
     });
     logVaultTokenBalances("after swap_usdc_to_assets", vaultBalancesAfter);
+
+    // Back-calculate prices: we spent 50 USDC per leg, measure how much asset we received
+    const wbtcMintInfo = await getMint(connection, wbtcMint, "confirmed", TOKEN_PROGRAM_ID);
+    const wethMintInfo = await getMint(connection, wethMint, "confirmed", TOKEN_PROGRAM_ID);
+
+    const wbtcBalanceAfter = await connection.getTokenAccountBalance(vaultWbtcAta);
+    const wethBalanceAfter = await connection.getTokenAccountBalance(vaultWethAta);
+
+    const wbtcReceived = (BigInt(wbtcBalanceAfter.value.amount) - BigInt(wbtcBalanceBefore.value.amount));
+    const wethReceived = (BigInt(wethBalanceAfter.value.amount) - BigInt(wethBalanceBefore.value.amount));
+
+    const wbtcReceivedHuman = Number(wbtcReceived) / 10 ** wbtcMintInfo.decimals;
+    const wethReceivedHuman = Number(wethReceived) / 10 ** wethMintInfo.decimals;
+
+    const wsolReceived = vaultBalancesAfter.wsol.uiAmount - vaultBalancesBefore.wsol.uiAmount;
+    const solPriceUsdc = wsolReceived > 0 ? Number(USDC_AMOUNT_IN / 1e6) / wsolReceived : 0;
+
+    const wbtcUsdcSpent = (WBTC_SOL_IN / 1e9) * solPriceUsdc;
+    const wethUsdcSpent = (WETH_SOL_IN / 1e9) * solPriceUsdc;
+
+    const wbtcPriceUsdc = wbtcReceivedHuman > 0 ? wbtcUsdcSpent / wbtcReceivedHuman : 0;
+    const wethPriceUsdc = wethReceivedHuman > 0 ? wethUsdcSpent / wethReceivedHuman : 0;
+
+    console.log(`  WBTC received: ${wbtcReceivedHuman} WBTC (for ${wbtcUsdcSpent.toFixed(2)} USDC value of SOL)`);
+    console.log(`  WETH received: ${wethReceivedHuman} WETH (for ${wethUsdcSpent.toFixed(2)} USDC value of SOL)`);
+    console.log(`  Effective rate: 1 WBTC = ${wbtcPriceUsdc.toFixed(2)} USDC`);
+    console.log(`  Effective rate: 1 WETH = ${wethPriceUsdc.toFixed(2)} USDC`);
 
     const vault = await program.account.vault.fetch(vaultPda);
     assert.isTrue(vault.btcAmount.toNumber() > 0, "btcAmount should be > 0");
